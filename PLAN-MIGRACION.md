@@ -67,8 +67,13 @@ Existe una prueba reproducible del flujo actual y se conocen sus respuestas espe
 - La prueba actual valida el arranque del contexto Spring, pero no valida el flujo completo de publicacion y consumo.
 - La prueba mostro intentos de conexion a `localhost:9092` sin broker disponible.
 - Docker Desktop ya responde correctamente.
-- Kafka y Zookeeper descargaron sus imagenes, pero la descarga de `confluentinc/cp-schema-registry:7.3.0` quedo detenida.
-- La validacion integrada queda pendiente hasta completar esa descarga e iniciar los tres servicios.
+- Las tres imagenes de Confluent quedaron descargadas correctamente.
+- Se resolvio el conflicto con el contenedor externo `kafka-dev` usando Kafka en `localhost:19092` y Schema Registry en `localhost:18081`.
+- El entorno queda operativo con Zookeeper, Kafka y Schema Registry.
+- `order-topic` fue creado con 3 particiones.
+- Schema Registry requirio `JAVA_TOOL_OPTIONS=-XX:-UseContainerSupport` por un fallo cgroupv2/JMX de la imagen en Docker Desktop.
+- `./mvnw.cmd test`: correcto; 1 prueba ejecutada, 0 fallos y 0 errores.
+- Los consumidores Spring se conectaron al broker y recibieron asignacion de las particiones 0, 1 y 2.
 
 ---
 
@@ -216,6 +221,20 @@ Usar Testcontainers Kafka y Schema Registry, o el mecanismo de integracion que s
 - Las pruebas de regresion pasan.
 - La imagen Docker de Quarkus puede ejecutar el flujo local.
 - Se puede volver a la version Spring Boot sin cambios en Kafka ni en los esquemas.
+
+### Resultado de implementacion
+
+- Quarkus `3.20.3` compila y arranca con Java 21.
+- Se migraron el arranque, el controlador REST, el productor Kafka, el consumidor Kafka y la prueba de contexto.
+- Kafka, Avro y Schema Registry se mantienen; no se introdujo RabbitMQ.
+- El fast-jar `target/quarkus-app/quarkus-run.jar` se genera correctamente.
+- `POST /api/events` valido publico la orden `1002` en `order-topic`, particion 1, offset 2.
+- Un payload invalido devolvio HTTP 400.
+- `./mvnw.cmd test`: correcto; 1 prueba ejecutada, 0 fallos y 0 errores.
+- La imagen Docker fue adaptada al formato fast-jar de Quarkus.
+- La validacion de flujo se realizo con Kafka en `localhost:19092` y Schema Registry en `localhost:18081`.
+- Se agregaron 3 pruebas REST para el controlador: orden valida, validacion invalida y fallo de publicacion.
+- Suite completa: `./mvnw.cmd test` correcto; 4 pruebas ejecutadas, 0 fallos y 0 errores.
 
 ---
 

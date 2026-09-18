@@ -14,14 +14,14 @@ services:
     image: confluentinc/cp-kafka:7.4.0
     container_name: kafka
     ports:
-      - "9092:9092"
+      - "19092:9092"
       - "29092:29092"
     environment:
       KAFKA_DELETE_TOPIC_ENABLE: "true"
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:19092,PLAINTEXT_INTERNAL://kafka:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL      
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
@@ -43,8 +43,11 @@ services:
     image: confluentinc/cp-schema-registry:7.3.0
     container_name: schema-registry
     ports:
-      - "8081:8081"
+      - "18081:8081"
     environment:
+      JAVA_TOOL_OPTIONS: "-XX:-UseContainerSupport"
+      KAFKA_JMX_OPTS: "-Dcom.sun.management.jmxremote=false"
+      SCHEMA_REGISTRY_OPTS: "-Dcom.sun.management.jmxremote=false"
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081

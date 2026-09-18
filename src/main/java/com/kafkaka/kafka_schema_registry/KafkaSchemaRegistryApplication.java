@@ -1,13 +1,7 @@
 package com.kafkaka.kafka_schema_registry;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+public final class KafkaSchemaRegistryApplication {
 
-@SpringBootApplication
-public class KafkaSchemaRegistryApplication {
-
-	public static void main(String[] args) {
-		SpringApplication.run(KafkaSchemaRegistryApplication.class, args);
-	}
-
+    private KafkaSchemaRegistryApplication() {
+    }
 }

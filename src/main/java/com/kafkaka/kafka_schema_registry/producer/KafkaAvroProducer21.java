@@ -1,85 +1,76 @@
 package com.kafkaka.kafka_schema_registry.producer;
 
 import com.kafkaka.kafka_schema_registry.dto.orderRecord;
-import jakarta.annotation.PreDestroy;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.support.SendResult;
-import org.springframework.stereotype.Service;
+import io.quarkus.runtime.ShutdownEvent;
+import io.quarkus.runtime.StartupEvent;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
+import io.confluent.kafka.serializers.KafkaAvroSerializer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jboss.logging.Logger;
 
+import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
-@Service
-@Slf4j
+@ApplicationScoped
 public class KafkaAvroProducer21 {
 
-    @Value("${topic.name:order-topic}")
-    private String topicName;
+    private static final Logger LOG = Logger.getLogger(KafkaAvroProducer21.class);
 
-    @Autowired
-    private KafkaTemplate<String, orderRecord> template;
+    @ConfigProperty(name = "kafka.bootstrap.servers")
+    String bootstrapServers;
 
-    // ExecutorService con Virtual Threads de Java 21
-    private final ExecutorService virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    @ConfigProperty(name = "kafka.schema.registry.url")
+    String schemaRegistryUrl;
 
-    @Value("${kafka.partition.default:#{null}}")
-    private Integer defaultPartition;
+    @ConfigProperty(name = "topic.name", defaultValue = "order-topic")
+    String topicName;
 
-    public CompletableFuture<String> send(orderRecord order) {
-        // Ejecutar en un Virtual Thread para mejor concurrencia
-        return CompletableFuture.supplyAsync(() -> {
-            String messageKey = UUID.randomUUID().toString();
+    @ConfigProperty(name = "kafka.partition.default", defaultValue = "1")
+    int defaultPartition;
 
-            log.info(" EJECUTANDO EN VIRTUAL THREAD: {}", Thread.currentThread());
-            log.info(" ENVIANDO MENSAJE A KAFKA");
-            log.info("   Topic: {}", topicName);
-            log.info("   Order ID: {}", order.getOrderId());
-            log.info("   Description: {}", order.getOrderDescription());
-            log.info("   Address: {}", order.getOrderAddress());
+    private KafkaProducer<String, orderRecord> producer;
 
-            try {
-                CompletableFuture<SendResult<String, orderRecord>> future;
-                // Enviar mensaje a Kafka
-                if (defaultPartition != null) {
-                    future = template.send(topicName, defaultPartition, messageKey, order);
-                } else {
-                    future = template.send(topicName, messageKey, order);
-                }
-                // Enviar mensaje a Kafka
-                /*CompletableFuture<SendResult<String, orderRecord>> future =
-                        template.send(topicName, 1, messageKey, order);
-*/
-                // Esperar el resultado (blocking en Virtual Thread - muy eficiente)
-                SendResult<String, orderRecord> result = future.get();
-
-                log.info(" MENSAJE ENVIADO EXITOSAMENTE");
-                log.info("   Partition: {}", result.getRecordMetadata().partition());
-                log.info("   Offset: {}", result.getRecordMetadata().offset());
-                log.info("   Timestamp: {}", result.getRecordMetadata().timestamp());
-
-                return String.format(
-                        " Orden #%d enviada exitosamente a Kafka | Partition: %d | Offset: %d",
-                        order.getOrderId(),
-                        result.getRecordMetadata().partition(),
-                        result.getRecordMetadata().offset()
-                );
-            } catch (Exception ex) {
-                log.error(" ERROR AL ENVIAR MENSAJE");
-                log.error("   Order ID: {}", order.getOrderId());
-                log.error("   Error: {}", ex.getMessage(), ex);
-                throw new RuntimeException("Error al enviar mensaje a Kafka", ex);
-            }
-        }, virtualThreadExecutor);
+    void start(@Observes StartupEvent event) {
+        Properties properties = new Properties();
+        properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class.getName());
+        properties.put("schema.registry.url", schemaRegistryUrl);
+        producer = new KafkaProducer<>(properties);
     }
 
-    @PreDestroy
-    public void shutdown() {
-        log.info(" Cerrando Virtual Thread Executor...");
-        virtualThreadExecutor.shutdown();
+    public CompletableFuture<String> send(orderRecord order) {
+        String messageKey = UUID.randomUUID().toString();
+        ProducerRecord<String, orderRecord> record =
+                new ProducerRecord<>(topicName, defaultPartition, messageKey, order);
+        CompletableFuture<String> result = new CompletableFuture<>();
+        producer.send(record, (metadata, exception) -> completeSend(result, order, metadata, exception));
+        return result;
+    }
+
+    private void completeSend(CompletableFuture<String> result, orderRecord order,
+                              RecordMetadata metadata, Exception exception) {
+        if (exception != null) {
+            LOG.errorf(exception, "Error al enviar la orden %d a Kafka", order.getOrderId());
+            result.completeExceptionally(exception);
+            return;
+        }
+        LOG.infof("Orden %d enviada a particion %d, offset %d", order.getOrderId(),
+                metadata.partition(), metadata.offset());
+        result.complete(String.format("Orden #%d enviada exitosamente a Kafka | Partition: %d | Offset: %d",
+                order.getOrderId(), metadata.partition(), metadata.offset()));
+    }
+
+    void stop(@Observes ShutdownEvent event) {
+        if (producer != null) {
+            producer.close();
+        }
     }
 }
