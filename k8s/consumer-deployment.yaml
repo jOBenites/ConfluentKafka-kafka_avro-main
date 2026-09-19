@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-consumer
+  namespace: order-service
+  labels:
+    app: order-consumer
+    component: consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-consumer
+  template:
+    metadata:
+      labels:
+        app: order-consumer
+        component: consumer
+    spec:
+      initContainers:
+      - name: wait-for-rabbitmq
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -z rabbitmq.order-service.svc.cluster.local 5672; do echo waiting for rabbitmq; sleep 2; done;']
+      containers:
+      - name: order-consumer
+        image: docker.io/jodarb/order-service:latest
+        command: ["java"]
+        args:
+        - "-XX:+UseContainerSupport"
+        - "-XX:MaxRAMPercentage=75.0"
+        - "-jar"
+        - "/app/quarkus-run.jar"
+        ports:
+        - containerPort: 8181
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: order-service-config
+        - secretRef:
+            name: order-service-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        startupProbe:
+          httpGet:
+            path: /q/health
+            port: 8181
+          failureThreshold: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /q/health/ready
+            port: 8181
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /q/health/live
+            port: 8181
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+      terminationGracePeriodSeconds: 30

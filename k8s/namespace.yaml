@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: order-service
+  labels:
+    app.kubernetes.io/part-of: order-service
+    app.kubernetes.io/managed-by: kubectl

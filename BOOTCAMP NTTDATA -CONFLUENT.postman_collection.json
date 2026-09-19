@@ -1,19 +1,44 @@
 {
 	"info": {
 		"_postman_id": "7a58999c-bd46-43f4-9fa5-092be4501653",
-		"name": "BOOTCAMP NTTDATA -CONFLUENT",
+		"name": "Order Service - Quarkus + RabbitMQ (AKS)",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "2644324"
 	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://20.75.197.104",
+			"type": "string"
+		}
+	],
 	"item": [
 		{
-			"name": "localhost:8181/events",
+			"name": "Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/q/health",
+					"host": ["{{baseUrl}}"],
+					"path": ["q", "health"]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Send Order - Success",
 			"request": {
 				"method": "POST",
-				"header": [],
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\r\n    \"orderId\":1,\r\n    \"orderDescription\":\"Esto es una orden de compra\",\r\n    \"orderAddress\":\"lima-lima-peru\"\r\n}",
+					"raw": "{\n    \"orderId\": 1,\n    \"orderDescription\": \"Compra de laptop Dell XPS 15\",\n    \"orderAddress\": \"Av. Javier Prado 1234, San Isidro, Lima\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -21,15 +46,63 @@
 					}
 				},
 				"url": {
-					"raw": "localhost:8181/api/events",
-					"host": [
-						"localhost"
-					],
-					"port": "8181",
-					"path": [
-						"api",
-						"events"
-					]
+					"raw": "{{baseUrl}}/api/events",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "events"]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Send Order - Validation Error",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"orderId\": 0,\n    \"orderDescription\": \"\",\n    \"orderAddress\": \"\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/events",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "events"]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Send Order - Multiple Items",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"orderId\": 2,\n    \"orderDescription\": \"Monitor ultrawide Samsung 34 pulgadas\",\n    \"orderAddress\": \"Calle Los Olivos 567, Miraflores, Lima\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/events",
+					"host": ["{{baseUrl}}"],
+					"path": ["api", "events"]
 				}
 			},
 			"response": []

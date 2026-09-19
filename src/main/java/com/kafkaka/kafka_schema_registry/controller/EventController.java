@@ -1,7 +1,8 @@
 package com.kafkaka.kafka_schema_registry.controller;
 
+import com.kafkaka.kafka_schema_registry.dto.OrderMessage;
 import com.kafkaka.kafka_schema_registry.dto.orderRecord;
-import com.kafkaka.kafka_schema_registry.producer.KafkaAvroProducer21;
+import com.kafkaka.kafka_schema_registry.producer.OrderProducer;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
@@ -27,11 +28,15 @@ public class EventController {
     private static final Logger LOG = Logger.getLogger(EventController.class);
 
     @Inject
-    KafkaAvroProducer21 producer;
+    OrderProducer producer;
 
     @POST
     @Path("/events")
-    public CompletionStage<Response> sendMessage(orderRecord order) {
+    public CompletionStage<Response> sendMessage(OrderMessage incoming) {
+        orderRecord order = new orderRecord();
+        order.setOrderId(incoming.getOrderId());
+        order.setOrderDescription(incoming.getOrderDescription());
+        order.setOrderAddress(incoming.getOrderAddress());
         List<String> validationErrors = validateOrder(order);
         if (!validationErrors.isEmpty()) {
             return java.util.concurrent.CompletableFuture.completedFuture(
@@ -40,8 +45,9 @@ public class EventController {
                             .build());
         }
 
-        return producer.send(order)
-                .thenApply(message -> Response.ok(createSuccessResponse(message, order)).build())
+        OrderMessage message = OrderMessage.fromOrderRecord(order);
+        return producer.send(message)
+                .thenApply(v -> Response.ok(createSuccessResponse(message, order)).build())
                 .exceptionally(exception -> {
                     LOG.error("Error al procesar la orden", exception);
                     return Response.serverError().entity(createServerErrorResponse(exception, order)).build();
@@ -68,11 +74,11 @@ public class EventController {
         return errors;
     }
 
-    private Map<String, Object> createSuccessResponse(String message, orderRecord order) {
+    private Map<String, Object> createSuccessResponse(OrderMessage message, orderRecord order) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", true);
         response.put("timestamp", getCurrentTimestamp());
-        response.put("message", message);
+        response.put("message", "Orden #" + order.getOrderId() + " enviada exitosamente a RabbitMQ | MessageId: " + message.getMessageId());
         response.put("data", Map.of(
                 "orderId", order.getOrderId(),
                 "orderDescription", order.getOrderDescription().toString(),

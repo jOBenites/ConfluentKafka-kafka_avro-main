@@ -1,73 +1,26 @@
 services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
-    container_name: zookeeper
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
     ports:
-      - "2181:2181"
+      - "5672:5672"
+      - "15672:15672"
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    networks:
-      - microservices-network
-
-  kafka:
-    image: confluentinc/cp-kafka:7.4.0
-    container_name: kafka
-    ports:
-      - "19092:9092"
-      - "29092:29092"
-    environment:
-      KAFKA_DELETE_TOPIC_ENABLE: "true"
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:19092,PLAINTEXT_INTERNAL://kafka:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL      
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: nc -z localhost 9092 || exit 1
-      interval: 5s
-      timeout: 10s
-      retries: 20
-    depends_on:
-      - zookeeper
-    networks:
-      - microservices-network
- 
-  schema-registry:
-    image: confluentinc/cp-schema-registry:7.3.0
-    container_name: schema-registry
-    ports:
-      - "18081:8081"
-    environment:
-      JAVA_TOOL_OPTIONS: "-XX:-UseContainerSupport"
-      KAFKA_JMX_OPTS: "-Dcom.sun.management.jmxremote=false"
-      SCHEMA_REGISTRY_OPTS: "-Dcom.sun.management.jmxremote=false"
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      # Factor de replicación para un solo broker
-      SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: 1
-      # Deshabilitar la elección de líder basada en Kafka - usar elección de líder fija
-      SCHEMA_REGISTRY_MASTER_ELIGIBILITY: "true"
-      # Configurar explícitamente esta instancia como master
-      SCHEMA_REGISTRY_SCHEMA_REGISTRY_GROUP_ID: schema-registry
-      # Modo de compatibilidad
-      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: _schemas
-      # Mecanismo alternativo de elección de líder
-      SCHEMA_REGISTRY_LEADER_ELECTION_STRATEGY: "none"
-    depends_on:
-        kafka:
-          condition: service_healthy
-    restart: always
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 10
     networks:
       - microservices-network
 
 networks:
   microservices-network:
     driver: bridge
+
+volumes:
+  rabbitmq_data:

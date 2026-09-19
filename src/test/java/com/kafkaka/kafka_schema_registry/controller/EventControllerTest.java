@@ -1,7 +1,8 @@
 package com.kafkaka.kafka_schema_registry.controller;
 
+import com.kafkaka.kafka_schema_registry.dto.OrderMessage;
 import com.kafkaka.kafka_schema_registry.dto.orderRecord;
-import com.kafkaka.kafka_schema_registry.producer.KafkaAvroProducer21;
+import com.kafkaka.kafka_schema_registry.producer.OrderProducer;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
@@ -20,12 +21,12 @@ import static org.mockito.Mockito.when;
 class EventControllerTest {
 
     @InjectMock
-    KafkaAvroProducer21 producer;
+    OrderProducer producer;
 
     @Test
     void sendsValidOrder() {
-        when(producer.send(any(orderRecord.class)))
-                .thenReturn(CompletableFuture.completedFuture("Orden enviada a Kafka"));
+        when(producer.send(any(OrderMessage.class)))
+                .thenReturn(CompletableFuture.completedFuture(null));
 
         given()
                 .contentType("application/json")
@@ -41,9 +42,9 @@ class EventControllerTest {
                 .then()
                 .statusCode(200)
                 .body("success", equalTo(true))
-                .body("message", equalTo("Orden enviada a Kafka"));
+                .body("message", containsString("Orden #10 enviada exitosamente a RabbitMQ"));
 
-        verify(producer).send(any(orderRecord.class));
+        verify(producer).send(any(OrderMessage.class));
     }
 
     @Test
@@ -68,8 +69,8 @@ class EventControllerTest {
 
     @Test
     void returnsServerErrorWhenPublishingFails() {
-        when(producer.send(any(orderRecord.class)))
-                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("Kafka unavailable")));
+        when(producer.send(any(OrderMessage.class)))
+                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("RabbitMQ unavailable")));
 
         given()
                 .contentType("application/json")

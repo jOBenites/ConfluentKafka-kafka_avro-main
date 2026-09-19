@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-service-config
+  namespace: order-service
+data:
+  RABBITMQ_HOST: "rabbitmq.order-service.svc.cluster.local"
+  RABBITMQ_PORT: "5672"
+  QUARKUS_HTTP_PORT: "8181"
+  QUARKUS_LOG_CONSOLE_FORMAT: "%d{HH:mm:ss} %-5p [%c{2.}] (%t) %s%e%n"
+  QUARKUS_LOG_CONSOLE_LEVEL: "INFO"
