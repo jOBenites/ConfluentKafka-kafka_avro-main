@@ -1,61 +1,231 @@
-PASO 0
+# Order Service - Quarkus + RabbitMQ
 
-Detener y eliminar contenedores
-docker-compose down
+Microservicio de procesamiento de órdenes migrado de Spring Boot + Kafka a **Quarkus 3.20 + RabbitMQ**.
 
-Detener y eliminar contenedores, redes y volúmenes
-docker-compose down --volumes
+## Stack
 
-Limpiar imágenes y recursos no utilizados (opcional)
-docker system prune -a
+- **Runtime:** Quarkus 3.20.3, Java 21
+- **Messaging:** RabbitMQ via SmallRye Reactive Messaging
+- **API:** JAX-RS REST (puerto 8181)
+- **Container:** Multi-stage Dockerfile, non-root user
+- **Infraestructura:** AKS (Azure Kubernetes Service) con Terraform
 
-Elimine cualquier volumen persistente (si existe)
-docker volume prune -f
+---
 
-PASO 1
+## Desarrollo Local
 
+### Prerrequisitos
+- Java 21
+- Docker Desktop
+
+### 1. Levantar RabbitMQ
+
+```bash
 docker-compose up -d
+```
 
-docker network inspect kafka_avro-main_microservices-network
+RabbitMQ Management UI: http://localhost:15672 (guest/guest)
 
-PASO 2
+### 2. Ejecutar la aplicación
 
-docker-compose up -d zookeeper
-docker logs -f zookeeper
+```bash
+./mvnw quarkus:dev
+```
 
-PASO 3
+### 3. Probar la API
 
-docker-compose up -d kafka
-docker logs -f kafka
+```bash
+# Health check
+curl http://localhost:8181/q/health
 
-PASO 4
+# Enviar orden
+curl -X POST http://localhost:8181/api/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "orderId": 1,
+    "orderDescription": "Compra de laptop",
+    "orderAddress": "Av. Principal 123"
+  }'
+```
 
-docker-compose up -d schema-registry
-docker logs -f schema-registry
+### 4. Detener
 
-PASO 5
+```bash
+docker-compose down --volumes
+```
 
-curl -X POST http://localhost:8081/subjects/schema-test-value/versions \
-     -H "Content-Type: application/vnd.schemaregistry.v1+json" \
-     -d '{"schema":"{\"name\": \"orderRecord\", \"type\": \"record\",  \"doc\": \"Sample schema to help you get started.\", \"fields\": [{\"name\": \"orderId\", \"type\": \"int\", \"doc\": \"The id of the order.\"}, {\"name\": \"orderDescription\", \"type\": \"string\", \"doc\": \"The description of the order.\"}, {\"name\": \"orderAddress\", \"type\": \"string\", \"doc\": \"The address of the order.\"}]}"}'
+---
 
-curl -X GET http://localhost:8081/subjects
+## Despliegue en Azure AKS
 
-PASO 6 *****Creación de tópico con contenedores
+### Prerrequisitos
+- [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli) (dentro de WSL en Windows)
+- [Terraform](https://developer.hashicorp.com/terraform/install)
+- [Docker](https://docs.docker.com/get-docker/)
+- Cuenta Azure con suscripción activa
 
-docker exec -it kafka kafka-topics \
-    --create \
-    --topic order-topic \
-    --bootstrap-server localhost:9092 \
-    --partitions 3 \
-    --replication-factor 1
+### 1. Login en Azure
 
-PASO 7*****Subida del docker-compose
+```bash
+az login --use-device-code
+```
 
-docker-compose up -d kafka_avro-main
+### 2. Crear infraestructura con Terraform
 
-PASO 8 *****Mtto del servicio
+```bash
+cd terraform
+terraform init
+terraform plan
+terraform apply -auto-approve
+```
 
-docker logs -f kafka_avro-main
-docker stop kafka_avro-main
-docker rm kafka_avro-main
+Esto crea:
+- Resource Group `order-service-rg` (East US)
+- AKS cluster `order-service-aks` (Free tier, 1 nodo `Standard_D2s_v7`)
+
+### 3. Conectar kubectl al cluster
+
+```bash
+az aks get-credentials \
+  --resource-group order-service-rg \
+  --name order-service-aks
+```
+
+Verificar:
+```bash
+kubectl get nodes
+```
+
+### 4. Construir y subir imagen Docker
+
+```bash
+# Login a Docker Hub
+docker login
+
+# Build
+docker build -t <tu-usuario>/order-service:latest .
+
+# Push
+docker push <tu-usuario>/order-service:latest
+```
+
+### 5. Actualizar manifiestos K8s
+
+Reemplaza `<tu-usuario>` en los archivos:
+- `k8s/api-deployment.yaml` → image: `docker.io/<tu-usuario>/order-service:latest`
+- `k8s/consumer-deployment.yaml` → image: `docker.io/<tu-usuario>/order-service:latest`
+
+### 6. Desplegar en AKS
+
+```bash
+kubectl apply -f k8s/
+```
+
+### 7. Verificar
+
+```bash
+# Pods
+kubectl get pods -n order-service
+
+# IP externa del LoadBalancer
+kubectl get service order-api-service -n order-service
+```
+
+### 8. Probar la API en AKS
+
+```bash
+# Health check
+curl http://<EXTERNAL-IP>/q/health
+
+# Enviar orden
+curl -X POST http://<EXTERNAL-IP>/api/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "orderId": 1,
+    "orderDescription": "Orden desde AKS",
+    "orderAddress": "Calle 123, Ciudad"
+  }'
+```
+
+También puedes usar la **Postman Collection** incluida en el proyecto (`BOOTCAMP NTTDATA -CONFLUENT.postman_collection.json`). Actualiza la variable `baseUrl` con la IP externa del LoadBalancer.
+
+### 9. Destruir infraestructura
+
+```bash
+cd terraform
+terraform destroy -auto-approve
+```
+
+---
+
+## Estructura del Proyecto
+
+```
+├── src/main/java/.../
+│   ├── controller/EventController.java    # REST API
+│   ├── producer/OrderProducer.java        # SmallRye emitter → RabbitMQ
+│   ├── consumer/OrderConsumer.java        # SmallRye @Incoming ← RabbitMQ
+│   └── dto/
+│       ├── OrderMessage.java              # DTO JSON
+│       └── orderRecord.java               # Avro-generated
+├── src/test/java/.../
+│   └── controller/EventControllerTest.java
+├── k8s/                                   # Manifiestos Kubernetes
+│   ├── namespace.yaml
+│   ├── configmap.yaml
+│   ├── secret.yaml
+│   ├── rabbitmq-deployment.yaml
+│   ├── api-deployment.yaml
+│   ├── api-service.yaml
+│   └── consumer-deployment.yaml
+├── terraform/                             # Infraestructura AKS
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── terraform.tfvars
+├── Dockerfile
+├── docker-compose.yml                     # Solo RabbitMQ
+└── pom.xml
+```
+
+## Endpoints
+
+| Método | Path | Descripción |
+|--------|------|-------------|
+| `GET` | `/q/health` | Health check (SmallRye Health) |
+| `POST` | `/api/events` | Enviar orden a RabbitMQ |
+
+### POST /api/events
+
+**Request body:**
+```json
+{
+  "orderId": 1,
+  "orderDescription": "Descripción de la orden",
+  "orderAddress": "Dirección de entrega"
+}
+```
+
+**Success response (200):**
+```json
+{
+  "success": true,
+  "timestamp": "2026-09-18 23:00:00",
+  "message": "Orden #1 enviada exitosamente a RabbitMQ | MessageId: xxx",
+  "data": {
+    "orderId": 1,
+    "orderDescription": "...",
+    "orderAddress": "..."
+  }
+}
+```
+
+**Validation error (400):**
+```json
+{
+  "success": false,
+  "timestamp": "...",
+  "error": "Validacion fallida",
+  "validationErrors": ["orderId debe ser un numero positivo mayor a 0"]
+}
+```
